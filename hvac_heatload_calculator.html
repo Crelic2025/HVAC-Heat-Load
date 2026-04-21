@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0b0f14">
+<title>Heat Load Estimator</title>
+<style>
+/* ============ CORE ============ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overscroll-behavior:none}
+:root{
+  --bg:#0b0f14;
+  --panel:#121821;
+  --panel-2:#1a2230;
+  --border:#23303f;
+  --border-strong:#34465c;
+  --text:#e7edf3;
+  --text-dim:#8fa3b8;
+  --text-faint:#55687c;
+  --accent:#f97316;      /* Northern orange */
+  --accent-2:#fb923c;
+  --heat:#ef4444;        /* heat loss red */
+  --cool:#38bdf8;        /* heat gain blue */
+  --win:#22c55e;         /* controlling load */
+  --warn:#facc15;
+  --r:14px;
+  --r-sm:10px;
+}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;
+  font-size:16px;
+  line-height:1.4;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  min-height:100vh;
+}
+
+/* ============ LAYOUT ============ */
+.wrap{max-width:560px;margin:0 auto;padding:16px 16px 140px}
+header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 4px 20px;
+}
+header .brand{
+  display:flex;align-items:center;gap:10px;
+}
+header .logo{
+  width:34px;height:34px;border-radius:9px;
+  background:linear-gradient(135deg,var(--accent),var(--accent-2));
+  display:grid;place-items:center;font-weight:800;color:#fff;font-size:14px;
+  box-shadow:0 4px 12px rgba(249,115,22,.3);
+}
+header h1{font-size:17px;font-weight:700;letter-spacing:-.01em}
+header .sub{font-size:11px;color:var(--text-faint);font-weight:500;text-transform:uppercase;letter-spacing:.08em;margin-top:2px}
+header .reset{
+  background:none;border:1px solid var(--border);
+  color:var(--text-dim);font-size:13px;padding:8px 12px;border-radius:8px;
+  font-weight:500;
+}
+header .reset:active{background:var(--panel)}
+
+/* ============ CARDS ============ */
+.card{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  padding:18px;margin-bottom:14px;
+}
+.card-title{
+  display:flex;align-items:center;gap:10px;
+  font-size:12px;text-transform:uppercase;letter-spacing:.1em;
+  color:var(--text-dim);font-weight:700;margin-bottom:14px;
+}
+.card-title .num{
+  width:22px;height:22px;border-radius:6px;background:var(--panel-2);
+  display:grid;place-items:center;font-size:11px;color:var(--accent);
+  border:1px solid var(--border);
+}
+
+/* ============ FIELDS ============ */
+.row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px}
+.row.r2{grid-template-columns:1fr 1fr}
+.row.r1{grid-template-columns:1fr}
+.row:last-child{margin-bottom:0}
+label{
+  display:block;font-size:11px;color:var(--text-dim);
+  font-weight:600;text-transform:uppercase;letter-spacing:.06em;
+  margin-bottom:6px;
+}
+input[type="number"],input[type="text"],select{
+  width:100%;
+  background:var(--panel-2);
+  border:1px solid var(--border);
+  color:var(--text);
+  font-size:16px;font-weight:600;
+  padding:13px 12px;border-radius:var(--r-sm);
+  font-family:inherit;
+  appearance:none;-webkit-appearance:none;
+  transition:border-color .15s,background .15s;
+}
+input[type="number"]:focus,input[type="text"]:focus,select:focus{
+  outline:none;border-color:var(--accent);background:#1d2735;
+}
+select{
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%238fa3b8' d='M6 8L0 0h12z'/></svg>");
+  background-repeat:no-repeat;
+  background-position:right 12px center;
+  padding-right:32px;
+}
+input::placeholder{color:var(--text-faint);font-weight:500}
+input[type="number"]{-moz-appearance:textfield}
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+
+/* toggle */
+.check{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:13px 14px;background:var(--panel-2);
+  border:1px solid var(--border);border-radius:var(--r-sm);
+  font-size:15px;font-weight:600;
+}
+.check input{display:none}
+.check .sw{
+  width:44px;height:26px;background:var(--border);border-radius:13px;
+  position:relative;transition:background .2s;flex-shrink:0;
+}
+.check .sw::after{
+  content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;
+  background:#fff;border-radius:50%;transition:transform .2s;
+}
+.check input:checked ~ .sw{background:var(--accent)}
+.check input:checked ~ .sw::after{transform:translateX(18px)}
+
+/* ============ CTA ============ */
+.cta-bar{
+  position:fixed;left:0;right:0;bottom:0;
+  padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+  background:linear-gradient(to top,var(--bg) 70%,transparent);
+  z-index:10;
+}
+.cta-bar .inner{max-width:560px;margin:0 auto}
+button.calc{
+  width:100%;padding:17px;
+  background:linear-gradient(135deg,var(--accent),var(--accent-2));
+  border:none;border-radius:var(--r);
+  color:#fff;font-size:17px;font-weight:700;letter-spacing:.01em;
+  box-shadow:0 6px 20px rgba(249,115,22,.35),inset 0 1px 0 rgba(255,255,255,.2);
+  transition:transform .1s;
+  font-family:inherit;
+}
+button.calc:active{transform:scale(.98)}
+
+/* ============ RESULTS ============ */
+.results{display:none}
+.results.show{display:block;animation:slideUp .3s ease-out}
+@keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+
+.headline{
+  background:linear-gradient(145deg,#0d1520,#0b0f14);
+  border:1px solid var(--border-strong);
+  border-radius:var(--r);
+  padding:22px 20px;margin-bottom:14px;
+  position:relative;overflow:hidden;
+}
+.headline::before{
+  content:"";position:absolute;inset:0;
+  background:radial-gradient(circle at top right,rgba(249,115,22,.15),transparent 60%);
+  pointer-events:none;
+}
+.headline h2{
+  font-size:11px;color:var(--text-faint);text-transform:uppercase;
+  letter-spacing:.12em;font-weight:700;margin-bottom:14px;
+}
+.load-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}
+.load{
+  background:var(--panel-2);border:1px solid var(--border);
+  border-radius:var(--r-sm);padding:14px;position:relative;
+}
+.load.ctrl{border-color:var(--win);box-shadow:0 0 0 1px var(--win) inset}
+.load.ctrl::after{
+  content:"CONTROLS SIZING";
+  position:absolute;top:-8px;right:8px;
+  background:var(--win);color:#052e0f;
+  font-size:9px;font-weight:800;letter-spacing:.08em;
+  padding:3px 7px;border-radius:4px;
+}
+.load .lbl{
+  font-size:10px;color:var(--text-dim);text-transform:uppercase;
+  letter-spacing:.1em;font-weight:700;margin-bottom:6px;
+}
+.load.gain .lbl{color:var(--cool)}
+.load.loss .lbl{color:var(--heat)}
+.load .val{font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1}
+.load .unit{font-size:11px;color:var(--text-faint);margin-top:4px;font-weight:500}
+
+.reco{
+  display:grid;grid-template-columns:1fr 1fr;gap:12px;
+  padding-top:18px;border-top:1px solid var(--border);
+}
+.reco .item{}
+.reco .lbl{
+  font-size:10px;color:var(--text-faint);text-transform:uppercase;
+  letter-spacing:.12em;font-weight:700;margin-bottom:4px;
+}
+.reco .size{
+  font-size:32px;font-weight:800;color:var(--accent);
+  letter-spacing:-.03em;line-height:1;
+}
+.reco .desc{font-size:12px;color:var(--text-dim);margin-top:6px;font-weight:500}
+
+.alert{
+  margin-top:14px;padding:13px 14px;
+  background:rgba(250,204,21,.08);border:1px solid rgba(250,204,21,.3);
+  border-radius:var(--r-sm);
+  display:flex;gap:10px;align-items:flex-start;
+}
+.alert .ic{flex-shrink:0;width:18px;height:18px;color:var(--warn);margin-top:1px}
+.alert .txt{font-size:13px;color:#fde68a;line-height:1.45}
+.alert .txt strong{color:var(--warn)}
+
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.actions button{
+  padding:14px;background:var(--panel);border:1px solid var(--border);
+  color:var(--text);font-size:14px;font-weight:600;border-radius:var(--r-sm);
+  font-family:inherit;
+}
+.actions button:active{background:var(--panel-2)}
+.actions button.primary{border-color:var(--accent);color:var(--accent)}
+
+/* breakdown */
+.breakdown{
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:var(--r);padding:0;overflow:hidden;
+}
+.breakdown .hd{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 18px;cursor:pointer;user-select:none;
+}
+.breakdown .hd h3{
+  font-size:12px;text-transform:uppercase;letter-spacing:.1em;
+  color:var(--text-dim);font-weight:700;
+}
+.breakdown .chev{transition:transform .2s;color:var(--text-faint)}
+.breakdown.open .chev{transform:rotate(180deg)}
+.breakdown .body{
+  max-height:0;overflow:hidden;transition:max-height .3s ease;
+}
+.breakdown.open .body{max-height:2000px}
+.breakdown .inner{padding:0 18px 18px}
+.line{
+  display:flex;justify-content:space-between;
+  padding:9px 0;border-bottom:1px dashed var(--border);
+  font-size:14px;
+}
+.line:last-child{border-bottom:none}
+.line .name{color:var(--text-dim)}
+.line .v{font-weight:700;font-variant-numeric:tabular-nums}
+.line .v.gain{color:var(--cool)}
+.line .v.loss{color:var(--heat)}
+.line.total{
+  border-top:2px solid var(--border-strong);border-bottom:none;
+  margin-top:6px;padding-top:12px;
+  font-weight:700;font-size:15px;
+}
+.line.total .name{color:var(--text)}
+
+.section-hd{
+  font-size:10px;text-transform:uppercase;letter-spacing:.12em;
+  color:var(--text-faint);font-weight:700;
+  margin:16px 0 4px;padding-top:10px;
+  border-top:1px solid var(--border);
+}
+.section-hd:first-child{border-top:none;margin-top:0;padding-top:0}
+
+/* worksheet */
+.ws{
+  background:#fff;color:#000;font-family:"SF Mono",Menlo,monospace;
+  font-size:11px;border-radius:var(--r);overflow:hidden;
+  border:1px solid var(--border);
+}
+.ws-hd{
+  display:grid;grid-template-columns:1fr 1fr;gap:0;
+  background:#f3f4f6;border-bottom:2px solid #111;
+}
+.ws-hd div{padding:10px 12px;font-weight:700;font-size:12px;letter-spacing:.02em}
+.ws-hd div:first-child{border-right:1px solid #d1d5db;color:#0369a1}
+.ws-hd div:last-child{color:#b91c1c}
+.ws-body{display:grid;grid-template-columns:1fr 1fr}
+.ws-col{padding:8px;border-right:1px solid #e5e7eb}
+.ws-col:last-child{border-right:none}
+.ws-grp{margin-bottom:10px}
+.ws-grp-title{
+  font-size:10px;font-weight:700;text-transform:uppercase;
+  color:#374151;margin:6px 0 3px;letter-spacing:.05em;
+  padding-bottom:2px;border-bottom:1px solid #e5e7eb;
+}
+.ws-row{display:grid;grid-template-columns:1.4fr .5fr .5fr;gap:4px;padding:2px 0;font-size:10px}
+.ws-row .n{color:#6b7280}
+.ws-row .q{text-align:right;color:#111}
+.ws-row .b{text-align:right;font-weight:700;color:#111}
+.ws-row.filled .q,.ws-row.filled .b{background:#fef3c7;padding:0 3px;border-radius:2px}
+.ws-sub{
+  display:flex;justify-content:space-between;
+  padding:8px 4px;margin-top:6px;
+  border-top:2px solid #111;font-weight:700;font-size:12px;
+}
+.ws-sub.gain{color:#0369a1}
+.ws-sub.loss{color:#b91c1c}
+
+/* print */
+@media print{
+  body{background:#fff;color:#000;padding:0}
+  .cta-bar,.card:not(.print-me),header,.actions,.breakdown{display:none!important}
+  .wrap{padding:0;max-width:none}
+  .headline,.ws{break-inside:avoid;page-break-inside:avoid}
+}
+
+.foot{
+  text-align:center;color:var(--text-faint);
+  font-size:11px;padding:20px 0 4px;
+  letter-spacing:.05em;
+}
+.foot .dot{color:var(--accent);margin:0 6px}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="logo">N1</div>
+      <div>
+        <h1>Heat Load Estimator</h1>
+        <div class="sub">Northern One Hour · Ramsey MN</div>
+      </div>
+    </div>
+    <button class="reset" onclick="resetAll()">Clear</button>
+  </header>
+
+  <!-- ====== INPUTS ====== -->
+  <div id="inputSection">
+
+    <div class="card">
+      <div class="card-title"><span class="num">1</span>Room Dimensions</div>
+      <div class="row">
+        <div><label>Length (ft)</label><input type="number" id="len" inputmode="numeric" placeholder="20"></div>
+        <div><label>Width (ft)</label><input type="number" id="wid" inputmode="numeric" placeholder="30"></div>
+        <div><label>Ceiling (ft)</label><input type="number" id="ht" inputmode="numeric" placeholder="8"></div>
+      </div>
+      <div class="row r1">
+        <div>
+          <label>Exterior walls exposed</label>
+          <select id="expo">
+            <option value="0.25">1 wall (interior room)</option>
+            <option value="0.5" selected>2 walls (corner room)</option>
+            <option value="0.75">3 walls</option>
+            <option value="1">All 4 (whole house)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="num">2</span>Windows</div>
+      <div class="row r2">
+        <div>
+          <label>Primary exposure</label>
+          <select id="winDir">
+            <option value="N">North</option>
+            <option value="NE">NE / NW</option>
+            <option value="E" selected>East / West</option>
+            <option value="SE">SE / SW</option>
+            <option value="S">South</option>
+          </select>
+        </div>
+        <div>
+          <label>Glazing type</label>
+          <select id="winType">
+            <option value="single">Single pane</option>
+            <option value="double" selected>Double pane</option>
+            <option value="sliding">Sliding glass</option>
+          </select>
+        </div>
+      </div>
+      <div class="row r1">
+        <div>
+          <label>Glass sq ft (leave blank to auto-default)</label>
+          <input type="number" id="winSqft" inputmode="numeric" placeholder="auto: 15% of wall">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="num">3</span>Doors</div>
+      <div class="row r2">
+        <div>
+          <label>Count</label>
+          <input type="number" id="doorCount" inputmode="numeric" placeholder="1" value="1">
+        </div>
+        <div>
+          <label>Type</label>
+          <select id="doorType">
+            <option value="wood">Solid wood</option>
+            <option value="metal" selected>Metal</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="num">4</span>Insulation</div>
+      <div class="row r2">
+        <div>
+          <label>Walls</label>
+          <select id="wallR">
+            <option value="R11">R11 – 3"</option>
+            <option value="R13">R13 – 3½"</option>
+            <option value="R19" selected>R19 – 6"</option>
+          </select>
+        </div>
+        <div>
+          <label>Ceiling</label>
+          <select id="ceilR">
+            <option value="R11">R11</option>
+            <option value="R19">R19</option>
+            <option value="R30" selected>R30</option>
+            <option value="R38">R38</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="num">5</span>Foundation</div>
+      <div class="row r1">
+        <div>
+          <label>Type</label>
+          <select id="foundType" onchange="toggleFound()">
+            <option value="none">None / above floor</option>
+            <option value="basement" selected>Basement</option>
+            <option value="slab-noduct">Slab, no floor ducts</option>
+            <option value="slab-duct">Slab, with floor ducts</option>
+          </select>
+        </div>
+      </div>
+      <div class="row r1" id="foundSqft" style="display:block">
+        <div>
+          <label>Basement floor sq ft</label>
+          <input type="number" id="basementSqft" inputmode="numeric" placeholder="auto">
+        </div>
+      </div>
+      <div class="row r2" id="foundSlab" style="display:none">
+        <div>
+          <label>Slab linear ft</label>
+          <input type="number" id="slabLinft" inputmode="numeric" placeholder="auto">
+        </div>
+        <div>
+          <label>Insulation</label>
+          <select id="slabInsul">
+            <option value="none">None</option>
+            <option value="1in">1"</option>
+            <option value="2in" selected>2"</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="num">6</span>Occupancy & Air</div>
+      <div class="row r2">
+        <div>
+          <label>People</label>
+          <input type="number" id="people" inputmode="numeric" value="2">
+        </div>
+        <div>
+          <label>Mech vent CFM</label>
+          <input type="number" id="mechCfm" inputmode="numeric" value="0">
+        </div>
+      </div>
+      <div class="row r1" style="margin-top:4px">
+        <label class="check">
+          <span>Kitchen in this zone</span>
+          <input type="checkbox" id="kitchen">
+          <span class="sw"></span>
+        </label>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ====== RESULTS ====== -->
+  <div class="results" id="resultsSection">
+
+    <div class="headline">
+      <h2>Sizing Recommendation</h2>
+      <div class="load-grid">
+        <div class="load gain" id="gainBox">
+          <div class="lbl">Heat Gain</div>
+          <div class="val" id="gainVal">—</div>
+          <div class="unit">BTUH · cooling</div>
+        </div>
+        <div class="load loss" id="lossBox">
+          <div class="lbl">Heat Loss</div>
+          <div class="val" id="lossVal">—</div>
+          <div class="unit">BTUH · heating</div>
+        </div>
+      </div>
+      <div class="reco">
+        <div class="item">
+          <div class="lbl">Indoor head</div>
+          <div class="size" id="headSize">—</div>
+          <div class="desc" id="headDesc"></div>
+        </div>
+        <div class="item">
+          <div class="lbl">Condenser</div>
+          <div class="size" id="condSize">—</div>
+          <div class="desc" id="condDesc"></div>
+        </div>
+      </div>
+      <div class="alert" id="alertBox" style="display:none">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+        <div class="txt" id="alertTxt"></div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button onclick="copySummary()">📋 Copy summary</button>
+      <button class="primary" onclick="window.print()">🖨 Print worksheet</button>
+    </div>
+
+    <div class="breakdown" id="breakdown" onclick="toggleBreakdown(event)">
+      <div class="hd">
+        <h3>Calculation Breakdown</h3>
+        <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div class="body">
+        <div class="inner" id="breakdownBody"></div>
+      </div>
+    </div>
+
+    <div class="card print-me" style="margin-top:14px">
+      <div class="card-title"><span class="num">✓</span>Filled Worksheet</div>
+      <div class="ws" id="worksheet"></div>
+    </div>
+
+    <div class="foot">
+      Northern One Hour <span class="dot">•</span> Ramsey, MN <span class="dot">•</span> Reese
+    </div>
+
+  </div>
+
+</div>
+
+<!-- ====== CTA ====== -->
+<div class="cta-bar" id="ctaBar">
+  <div class="inner">
+    <button class="calc" onclick="calculate()">Calculate Load</button>
+  </div>
+</div>
+
+<script>
+/* ============ FACTORS (from the Excel) ============ */
+const F = {
+  winGain:  { N:19, NE:34, E:48, SE:39, S:24 },
+  winLoss:  { single:113, double:82, sliding:85 },
+  doorGain: { wood:8.8, metal:4.6 },
+  doorLoss: { wood:52,  metal:39 },
+  wallGain: { R11:2.6, R13:2.3, R19:1.6 },
+  wallLoss: { R11:7.6, R13:5.9, R19:4.7 },
+  ceilGain: { R11:4.1, R19:2.6, R30:1.6, R38:1.3 },
+  ceilLoss: { R11:7.5, R19:4.5, R30:2.8, R38:2.2 },
+  basementLoss: 2.4,
+  slabNoDuct: { none:69, "1in":35, "2in":17.8 },
+  slabDuct:   { none:162,"1in":97, "2in":79 },
+  infilSens: 27, infilLat: 24,
+  mechSens:  27, mechLat:  24,
+  infilLoss: 94, ventLoss: 94,
+  perPerson: 530,
+  kitchen:   1200,
+  achRate:   0.4  // air changes per hour for 0.4 ACH rule
+};
+
+/* ============ SIZING LADDER ============ */
+const HEAD_SIZES = [6000, 9000, 12000, 15000, 18000, 24000, 30000, 36000];
+
+function pickHead(btu){
+  for(const s of HEAD_SIZES){ if(btu <= s) return s; }
+  return 36000;
+}
+
+/* ============ STATE ============ */
+let lastCalc = null;
+
+function getInputs(){
+  const v = id => document.getElementById(id).value;
+  const n = id => parseFloat(v(id)) || 0;
+  return {
+    len: n('len'), wid: n('wid'), ht: n('ht'),
+    expo: parseFloat(v('expo')),
+    winDir: v('winDir'), winType: v('winType'),
+    winSqft: v('winSqft') ? n('winSqft') : null,
+    doorCount: n('doorCount'), doorType: v('doorType'),
+    wallR: v('wallR'), ceilR: v('ceilR'),
+    foundType: v('foundType'),
+    basementSqft: v('basementSqft') ? n('basementSqft') : null,
+    slabLinft: v('slabLinft') ? n('slabLinft') : null,
+    slabInsul: v('slabInsul'),
+    people: n('people'), mechCfm: n('mechCfm'),
+    kitchen: document.getElementById('kitchen').checked
+  };
+}
+
+/* ============ CORE MATH ============ */
+function compute(i){
+  // Derived geometry
+  const floor = i.len * i.wid;
+  const volume = floor * i.ht;
+  const perimeter = 2 * (i.len + i.wid);
+  const exposedPerim = perimeter * i.expo;
+  const grossWall = exposedPerim * i.ht;
+  const glassSqft = i.winSqft !== null ? i.winSqft : Math.round(grossWall * 0.15);
+  const doorSqft = i.doorCount * 21;
+  const netWall = Math.max(0, grossWall - glassSqft - doorSqft);
+  const ceilSqft = floor;
+  const infilCfm = Math.round(volume * F.achRate / 60);
+
+  const basementSqft = i.foundType === 'basement'
+    ? (i.basementSqft !== null ? i.basementSqft : floor) : 0;
+  const slabLinft = (i.foundType === 'slab-noduct' || i.foundType === 'slab-duct')
+    ? (i.slabLinft !== null ? i.slabLinft : Math.round(exposedPerim)) : 0;
+
+  // ======= HEAT GAIN (cooling) =======
+  const gain = {
+    window:  glassSqft * F.winGain[i.winDir],
+    door:    doorSqft  * F.doorGain[i.doorType],
+    wall:    netWall   * F.wallGain[i.wallR],
+    ceiling: ceilSqft  * F.ceilGain[i.ceilR],
+    infilS:  infilCfm  * F.infilSens,
+    infilL:  infilCfm  * F.infilLat,
+    mechS:   i.mechCfm * F.mechSens,
+    mechL:   i.mechCfm * F.mechLat,
+    people:  i.people  * F.perPerson,
+    kitchen: i.kitchen ? F.kitchen : 0
+  };
+  const gainTotal = Object.values(gain).reduce((a,b)=>a+b,0);
+
+  // ======= HEAT LOSS (heating) =======
+  const loss = {
+    window:  glassSqft * F.winLoss[i.winType],
+    door:    doorSqft  * F.doorLoss[i.doorType],
+    wall:    netWall   * F.wallLoss[i.wallR],
+    ceiling: ceilSqft  * F.ceilLoss[i.ceilR],
+    infil:   infilCfm  * F.infilLoss,
+    vent:    i.mechCfm * F.ventLoss,
+    basement: basementSqft * F.basementLoss,
+    slab:    slabLinft * (i.foundType === 'slab-duct'
+              ? F.slabDuct[i.slabInsul]
+              : i.foundType === 'slab-noduct'
+                ? F.slabNoDuct[i.slabInsul] : 0)
+  };
+  const lossTotal = Object.values(loss).reduce((a,b)=>a+b,0);
+
+  const controlling = Math.max(gainTotal, lossTotal);
+  const head = pickHead(controlling);
+  const condenser = head;
+
+  // cold-climate derate check
+  // at -15F MN, mini-splits deliver ~70-75% of nameplate
+  const coldDeliver = head * 0.72;
+  const needsColdClimate = lossTotal > coldDeliver;
+
+  return {
+    inputs: i,
+    geom: { floor, volume, perimeter, exposedPerim, grossWall, glassSqft,
+            doorSqft, netWall, ceilSqft, infilCfm, basementSqft, slabLinft },
+    gain, gainTotal, loss, lossTotal, controlling,
+    head, condenser, coldDeliver, needsColdClimate
+  };
+}
+
+/* ============ RENDER ============ */
+const fmt = n => Math.round(n).toLocaleString();
+
+function calculate(){
+  const i = getInputs();
+  if(!i.len || !i.wid || !i.ht){
+    alert('Enter room dimensions first.');
+    return;
+  }
+  const c = compute(i);
+  lastCalc = c;
+  saveState();
+
+  document.getElementById('gainVal').textContent = fmt(c.gainTotal);
+  document.getElementById('lossVal').textContent = fmt(c.lossTotal);
+
+  // mark controlling load
+  const gainBox = document.getElementById('gainBox');
+  const lossBox = document.getElementById('lossBox');
+  gainBox.classList.remove('ctrl'); lossBox.classList.remove('ctrl');
+  if(c.gainTotal > c.lossTotal) gainBox.classList.add('ctrl');
+  else lossBox.classList.add('ctrl');
+
+  // sizing
+  const headK = c.head / 1000;
+  document.getElementById('headSize').textContent = headK + 'k';
+  document.getElementById('headDesc').textContent =
+    `${fmt(c.head)} BTUH nameplate`;
+  document.getElementById('condSize').textContent = headK + 'k';
+  document.getElementById('condDesc').textContent =
+    `Single-zone match · derate ~72% at −15°F`;
+
+  // warning
+  const alertBox = document.getElementById('alertBox');
+  const alertTxt = document.getElementById('alertTxt');
+  if(c.needsColdClimate){
+    alertBox.style.display = 'flex';
+    alertTxt.innerHTML = `<strong>Cold-climate warning:</strong> At −15°F this ${headK}k unit delivers ~${fmt(c.coldDeliver)} BTUH, which is less than the ${fmt(c.lossTotal)} BTUH heat loss. Recommend Mitsubishi Hyper Heat, Lennox MLA, or bumping up to ${pickHead(c.lossTotal/0.72)/1000}k.`;
+  } else if(c.head >= 30000){
+    alertBox.style.display = 'flex';
+    alertTxt.innerHTML = `<strong>Large load:</strong> At ${headK}k, consider splitting into two heads (e.g. ${pickHead(c.controlling*0.55)/1000}k + ${pickHead(c.controlling*0.55)/1000}k) on a multi-zone condenser for better zoning and efficiency.`;
+  } else {
+    alertBox.style.display = 'none';
+  }
+
+  renderBreakdown(c);
+  renderWorksheet(c);
+
+  // show results, hide input cards, scroll to top
+  document.getElementById('inputSection').style.display = 'none';
+  document.getElementById('resultsSection').classList.add('show');
+  document.getElementById('ctaBar').innerHTML =
+    '<div class="inner"><button class="calc" onclick="backToInputs()">← Edit inputs</button></div>';
+  window.scrollTo({ top:0, behavior:'smooth' });
+}
+
+function backToInputs(){
+  document.getElementById('inputSection').style.display = 'block';
+  document.getElementById('resultsSection').classList.remove('show');
+  document.getElementById('ctaBar').innerHTML =
+    '<div class="inner"><button class="calc" onclick="calculate()">Calculate Load</button></div>';
+  window.scrollTo({ top:0, behavior:'smooth' });
+}
+
+function renderBreakdown(c){
+  const rows = [
+    ['GAIN'],
+    ['Windows',        c.gain.window,  'gain'],
+    ['Doors',          c.gain.door,    'gain'],
+    ['Walls (net)',    c.gain.wall,    'gain'],
+    ['Ceiling',        c.gain.ceiling, 'gain'],
+    ['Infil sensible', c.gain.infilS,  'gain'],
+    ['Infil latent',   c.gain.infilL,  'gain'],
+    ['Mech sensible',  c.gain.mechS,   'gain'],
+    ['Mech latent',    c.gain.mechL,   'gain'],
+    ['People',         c.gain.people,  'gain'],
+    ['Kitchen',        c.gain.kitchen, 'gain'],
+    ['TOTAL GAIN',     c.gainTotal,    'gain', true],
+    ['LOSS'],
+    ['Windows',        c.loss.window,  'loss'],
+    ['Doors',          c.loss.door,    'loss'],
+    ['Walls (net)',    c.loss.wall,    'loss'],
+    ['Ceiling',        c.loss.ceiling, 'loss'],
+    ['Infiltration',   c.loss.infil,   'loss'],
+    ['Ventilation',    c.loss.vent,    'loss'],
+    ['Basement',       c.loss.basement,'loss'],
+    ['Slab',           c.loss.slab,    'loss'],
+    ['TOTAL LOSS',     c.lossTotal,    'loss', true]
+  ];
+  let html = '';
+  rows.forEach(r => {
+    if(r.length === 1){
+      html += `<div class="section-hd">${r[0] === 'GAIN' ? 'Heat Gain (BTUH)' : 'Heat Loss (BTUH)'}</div>`;
+    } else {
+      html += `<div class="line${r[3]?' total':''}"><span class="name">${r[0]}</span><span class="v ${r[2]}">${fmt(r[1])}</span></div>`;
+    }
+  });
+  // geometry summary
+  html += `<div class="section-hd">Derived</div>
+    <div class="line"><span class="name">Floor sq ft</span><span class="v">${fmt(c.geom.floor)}</span></div>
+    <div class="line"><span class="name">Gross wall sq ft</span><span class="v">${fmt(c.geom.grossWall)}</span></div>
+    <div class="line"><span class="name">Net wall sq ft</span><span class="v">${fmt(c.geom.netWall)}</span></div>
+    <div class="line"><span class="name">Glass sq ft</span><span class="v">${fmt(c.geom.glassSqft)}</span></div>
+    <div class="line"><span class="name">Infiltration CFM</span><span class="v">${fmt(c.geom.infilCfm)}</span></div>`;
+  document.getElementById('breakdownBody').innerHTML = html;
+}
+
+function toggleBreakdown(e){
+  if(e.target.closest('.body')) return;
+  document.getElementById('breakdown').classList.toggle('open');
+}
+
+/* ============ WORKSHEET (mimics Excel) ============ */
+function wsRow(name, qty, btu, filled){
+  const q = qty === null || qty === undefined ? '' : (typeof qty === 'number' ? fmt(qty) : qty);
+  const b = btu === null || btu === undefined ? '' : fmt(btu);
+  return `<div class="ws-row${filled?' filled':''}"><span class="n">${name}</span><span class="q">${q}</span><span class="b">${b}</span></div>`;
+}
+
+function renderWorksheet(c){
+  const i = c.inputs, g = c.geom;
+  const dirMap = {N:'N', NE:'NE/NW', E:'E/W', SE:'SE/SW', S:'S'};
+  const typeMap = {single:'Single', double:'Double', sliding:'Sliding'};
+  const doorMap = {wood:'Solid wood', metal:'Metal'};
+  const rMap = {R11:'R11 – 3"', R13:'R13 – 3½"', R19:'R19 – 6"', R30:'R30 – 10"', R38:'R38 – 12"'};
+
+  // GAIN COL
+  let L = '';
+  L += `<div class="ws-grp"><div class="ws-grp-title">Windows · 20°F TD</div>`;
+  ['N','NE','E','SE','S'].forEach(d => {
+    const filled = i.winDir === d;
+    L += wsRow(dirMap[d], filled ? g.glassSqft : '', filled ? c.gain.window : '', filled);
+  });
+  L += `</div>`;
+
+  L += `<div class="ws-grp"><div class="ws-grp-title">Doors · 20 TD</div>`;
+  ['wood','metal'].forEach(d => {
+    const filled = i.doorType === d && g.doorSqft > 0;
+    L += wsRow(doorMap[d], filled ? g.doorSqft : '', filled ? c.gain.door : '', filled);
+  });
+  L += `</div>`;
+
+  L += `<div class="ws-grp"><div class="ws-grp-title">Wall Area</div>
+    ${wsRow('Gross wall', g.grossWall, '', true)}
+    ${wsRow('Win + doors', g.glassSqft + g.doorSqft, '', true)}
+    ${wsRow('Net wall', g.netWall, '', true)}</div>`;
+
+  L += `<div class="ws-grp"><div class="ws-grp-title">Framed Wall · 20 TD</div>`;
+  ['R11','R13','R19'].forEach(r => {
+    const filled = i.wallR === r;
+    L += wsRow(rMap[r], filled ? g.netWall : '', filled ? c.gain.wall : '', filled);
+  });
+  L += `</div>`;
+
+  L += `<div class="ws-grp"><div class="ws-grp-title">Ceiling · 20 TD</div>`;
+  ['R11','R19','R30','R38'].forEach(r => {
+    const filled = i.ceilR === r;
+    L += wsRow(rMap[r], filled ? g.ceilSqft : '', filled ? c.gain.ceiling : '', filled);
+  });
+  L += `</div>`;
+
+  L += `<div class="ws-grp"><div class="ws-grp-title">Infiltration (sensible + latent)</div>
+    ${wsRow('Floor × Ht × .4/60', `${i.len}×${i.wid}×${i.ht}`, g.infilCfm + ' CFM', true)}
+    ${wsRow('Sensible · 27', g.infilCfm, c.gain.infilS, true)}
+    ${wsRow('Latent · 24', g.infilCfm, c.gain.infilL, true)}
+    ${i.mechCfm > 0 ? wsRow('Mech sensible', i.mechCfm, c.gain.mechS, true) : ''}
+    ${i.mechCfm > 0 ? wsRow('Mech latent', i.mechCfm, c.gain.mechL, true) : ''}
+    </div>`;
+
+  L += `<div class="ws-grp"><div class="ws-grp-title">Internal</div>
+    ${wsRow('People · 530', i.people, c.gain.people, true)}
+    ${i.kitchen ? wsRow('Kitchen allow', '', 1200, true) : ''}</div>`;
+
+  // LOSS COL
+  let R = '';
+  R += `<div class="ws-grp"><div class="ws-grp-title">Windows · 85°F TD</div>`;
+  ['single','double','sliding'].forEach(t => {
+    const filled = i.winType === t;
+    R += wsRow(typeMap[t], filled ? g.glassSqft : '', filled ? c.loss.window : '', filled);
+  });
+  R += `</div>`;
+
+  R += `<div class="ws-grp"><div class="ws-grp-title">Doors · 85 TD</div>`;
+  ['wood','metal'].forEach(d => {
+    const filled = i.doorType === d && g.doorSqft > 0;
+    R += wsRow(doorMap[d], filled ? g.doorSqft : '', filled ? c.loss.door : '', filled);
+  });
+  R += `</div>`;
+
+  R += `<div class="ws-grp"><div class="ws-grp-title">Framed Wall · 85 TD</div>`;
+  ['R11','R13','R19'].forEach(r => {
+    const filled = i.wallR === r;
+    R += wsRow(rMap[r], filled ? g.netWall : '', filled ? c.loss.wall : '', filled);
+  });
+  R += `</div>`;
+
+  R += `<div class="ws-grp"><div class="ws-grp-title">Ceiling · 85 TD</div>`;
+  ['R11','R19','R30','R38'].forEach(r => {
+    const filled = i.ceilR === r;
+    R += wsRow(rMap[r], filled ? g.ceilSqft : '', filled ? c.loss.ceiling : '', filled);
+  });
+  R += `</div>`;
+
+  R += `<div class="ws-grp"><div class="ws-grp-title">Infil / Vent · 85 TD</div>
+    ${wsRow('Infiltration · 94', g.infilCfm, c.loss.infil, true)}
+    ${i.mechCfm > 0 ? wsRow('Ventilation · 94', i.mechCfm, c.loss.vent, true) : ''}</div>`;
+
+  if(i.foundType === 'basement'){
+    R += `<div class="ws-grp"><div class="ws-grp-title">Basement · 85 TD</div>
+      ${wsRow('Basement floor · 2.4', g.basementSqft, c.loss.basement, true)}</div>`;
+  } else if(i.foundType === 'slab-noduct' || i.foundType === 'slab-duct'){
+    const insulLbl = {none:'No insul', '1in':'1" insul', '2in':'2" insul'}[i.slabInsul];
+    const ductLbl = i.foundType === 'slab-duct' ? 'With ducts' : 'No ducts';
+    R += `<div class="ws-grp"><div class="ws-grp-title">Slab · ${ductLbl} · 85 TD</div>
+      ${wsRow(insulLbl, g.slabLinft + ' lf', c.loss.slab, true)}</div>`;
+  }
+
+  document.getElementById('worksheet').innerHTML = `
+    <div class="ws-hd"><div>Heat Gain · 20°F TD (cooling)</div><div>Heat Loss · 85°F TD (heating)</div></div>
+    <div class="ws-body">
+      <div class="ws-col">${L}
+        <div class="ws-sub gain"><span>Heat Gain Subtotal</span><span>${fmt(c.gainTotal)} BTUH</span></div>
+      </div>
+      <div class="ws-col">${R}
+        <div class="ws-sub loss"><span>Heat Loss Subtotal</span><span>${fmt(c.lossTotal)} BTUH</span></div>
+      </div>
+    </div>`;
+}
+
+/* ============ COPY SUMMARY ============ */
+function copySummary(){
+  if(!lastCalc) return;
+  const c = lastCalc, i = c.inputs;
+  const ctrl = c.gainTotal > c.lossTotal ? 'GAIN' : 'LOSS';
+  const txt = `HEAT LOAD — ${i.len}×${i.wid}×${i.ht}ft
+Heat Gain: ${fmt(c.gainTotal)} BTUH
+Heat Loss: ${fmt(c.lossTotal)} BTUH  [${ctrl} controls]
+
+Head: ${c.head/1000}k
+Condenser: ${c.condenser/1000}k
+${c.needsColdClimate ? '⚠ Cold-climate: at -15°F delivers ~' + fmt(c.coldDeliver) + ' BTUH. Upgrade to Hyper Heat/MLA or next size.' : ''}
+Windows: ${i.winDir} ${c.geom.glassSqft}sf ${i.winType}
+Walls: ${i.wallR} · Ceiling: ${i.ceilR}
+Foundation: ${i.foundType}
+Occupants: ${i.people}${i.kitchen ? ' · Kitchen' : ''}`.trim();
+  navigator.clipboard.writeText(txt).then(() => {
+    const btns = document.querySelectorAll('.actions button');
+    const b = btns[0];
+    const o = b.textContent;
+    b.textContent = '✓ Copied';
+    setTimeout(() => b.textContent = o, 1500);
+  });
+}
+
+/* ============ FOUNDATION TOGGLE ============ */
+function toggleFound(){
+  const t = document.getElementById('foundType').value;
+  document.getElementById('foundSqft').style.display = t === 'basement' ? 'block' : 'none';
+  document.getElementById('foundSlab').style.display = (t === 'slab-noduct' || t === 'slab-duct') ? 'grid' : 'none';
+  saveState();
+}
+
+/* ============ PERSISTENCE ============ */
+const LS_KEY = 'hvacHeatLoad_v1';
+let saveTimer;
+function saveState(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    const state = {};
+    document.querySelectorAll('input, select').forEach(el => {
+      if(el.type === 'checkbox') state[el.id] = el.checked;
+      else state[el.id] = el.value;
+    });
+    try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){}
+  }, 400);
+}
+function loadState(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return;
+    const state = JSON.parse(raw);
+    Object.entries(state).forEach(([id, val]) => {
+      const el = document.getElementById(id);
+      if(!el) return;
+      if(el.type === 'checkbox') el.checked = val;
+      else el.value = val;
+    });
+    toggleFound();
+  }catch(e){}
+}
+function resetAll(){
+  if(!confirm('Clear all inputs?')) return;
+  localStorage.removeItem(LS_KEY);
+  location.reload();
+}
+
+/* ============ INIT ============ */
+document.querySelectorAll('input, select').forEach(el => {
+  el.addEventListener('input', saveState);
+  el.addEventListener('change', saveState);
+});
+loadState();
+</script>
+</body>
+</html>
